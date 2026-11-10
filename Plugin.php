@@ -19,6 +19,12 @@ class Plugin extends AbstractPlugin
 
     /**
      * Vito disables a plugin that throws during boot, so registration failures are reported instead.
+     *
+     * Registrations live in config, so `php artisan optimize` writes them into the config cache
+     * and the next boot starts with them already present. The feature and the action are each
+     * registered only when missing, because the core registrars throw "already exists" otherwise.
+     * They are checked independently since the cache can hold the feature without the action.
+     * RegisterViews needs no guard: it overwrites its config key and never throws.
      */
     public function boot(): void
     {
@@ -27,15 +33,23 @@ class Plugin extends AbstractPlugin
                 ->path(__DIR__.'/views')
                 ->register();
 
-            RegisterServerFeature::make('server-versions')
-                ->label('Installed versions')
-                ->description('Show exact versions of PHP, nginx, Redis, Node and pending updates')
-                ->register();
+            $features = config('server.features') ?? [];
 
-            RegisterServerFeatureAction::make('server-versions', 'check')
-                ->label('Check versions')
-                ->handler(Check::class)
-                ->register();
+            if (! isset($features['server-versions'])) {
+                RegisterServerFeature::make('server-versions')
+                    ->label('Installed versions')
+                    ->description('Show exact versions of PHP, nginx, Redis, Node and pending updates')
+                    ->register();
+            }
+
+            $actions = config('server.features.server-versions.actions') ?? [];
+
+            if (! isset($actions['check'])) {
+                RegisterServerFeatureAction::make('server-versions', 'check')
+                    ->label('Check versions')
+                    ->handler(Check::class)
+                    ->register();
+            }
         } catch (Throwable $e) {
             report($e);
         }
